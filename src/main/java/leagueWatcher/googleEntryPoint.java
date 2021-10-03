@@ -18,12 +18,14 @@ public class googleEntryPoint implements HttpFunction {
 	public void service(HttpRequest request, HttpResponse response) throws IOException {
 
 		Map<String, List<String>> params = request.getQueryParameters();
+		
 
 		if (params.containsKey("weeklyStats")) {
 
 			new mainFunction().weeklyReport();
 		} else {
 			new mainFunction().main();
+			
 		}
 
 	}

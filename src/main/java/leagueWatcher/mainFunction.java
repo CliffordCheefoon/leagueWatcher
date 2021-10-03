@@ -51,6 +51,11 @@ public class mainFunction {
 			return;
 		}
 
+		if (DISCORD_WEBHOOK_URL == null) {
+			System.err.println("Cannot get DISCORD_WEBHOOK_URL from environment variable");
+			return;
+		}
+
 		final Firestore db = new database().getDatabaseConnection();
 
 		if (db == null) {
@@ -339,7 +344,9 @@ public class mainFunction {
 
 							}
 
-							new helperObject().recordWeeklyStats(db, match.info.participants.get(x).summonerName,
+							new helperObject().recordWeeklyStats(db, 
+									match.info.participants.get(x).summonerName,
+									LEAGUE_PROFILE_ENDPOINT + summonersAL.get(sumIndex).profileIconId + ".png",
 									match.info.participants.get(x).pentaKills,
 									match.info.participants.get(x).quadraKills,
 									match.info.participants.get(x).totalMinionsKilled,
@@ -372,6 +379,20 @@ public class mainFunction {
 
 	public void weeklyReport() {
 
+		
+		API_KEY = System.getenv("RIOT_API_KEY");
+		DISCORD_WEBHOOK_URL = System.getenv("DISCORD_WEBHOOK_URL");
+
+		if (API_KEY == null) {
+			System.err.println("Cannot get RIOT_API_KEY from environment variable");
+			return;
+		}
+
+		if (DISCORD_WEBHOOK_URL == null) {
+			System.err.println("Cannot get DISCORD_WEBHOOK_URL from environment variable");
+			return;
+		}
+
 		final Firestore db = new database().getDatabaseConnection();
 
 		if (db == null) {
@@ -379,6 +400,8 @@ public class mainFunction {
 			return;
 		}
 
+		
+		new helperObject().processWeekly(db);
 		new helperObject().resetWeeklyStats(db);
 
 	}

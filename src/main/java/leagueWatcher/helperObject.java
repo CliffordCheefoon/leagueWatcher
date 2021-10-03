@@ -6,9 +6,12 @@ import java.lang.reflect.Type;
 import java.nio.charset.StandardCharsets;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
+import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -32,6 +35,7 @@ import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 
+
 import com.google.api.core.ApiFuture;
 import com.google.cloud.firestore.CollectionReference;
 import com.google.cloud.firestore.DocumentReference;
@@ -39,17 +43,22 @@ import com.google.cloud.firestore.DocumentSnapshot;
 import com.google.cloud.firestore.Firestore;
 import com.google.cloud.firestore.QueryDocumentSnapshot;
 import com.google.cloud.firestore.QuerySnapshot;
-import com.google.cloud.firestore.WriteResult;
+
 import com.google.common.reflect.TypeToken;
 import com.google.gson.Gson;
 import com.google.gson.JsonSyntaxException;
 
+import models.DiscordWebhook;
 import models.discordHook;
 import models.match;
+import models.playerWeeklyValue;
 import models.summoner;
 import models.versionObject;
 
 public class helperObject {
+
+	String SUMMONER_ICON = "summonerIcon";
+	String SUMMONER_NAME = "summonerName";
 
 	String PENTAKILL_COUNT = "pentaKillCount";
 	String QUADRAKILL_COUNT = "quadraKillCount";
@@ -439,8 +448,9 @@ public class helperObject {
 
 	}
 
-	public void recordWeeklyStats(Firestore db, String summonerName, int pentakill, int quadrakill, int cs, int Kills,
-			int inhibKills, int wards, int turrentKills, int baronKills, int dragonKill, int potions) {
+	public void recordWeeklyStats(Firestore db, String summonerName, String summonerIcon, int pentakill, int quadrakill,
+			int cs, int Kills, int inhibKills, int wards, int turrentKills, int baronKills, int dragonKill,
+			int potions) {
 
 		DocumentReference docRef = db.collection(mainFunction.SUMMONER_LIST_DB_NAME).document(summonerName);
 
@@ -454,6 +464,8 @@ public class helperObject {
 			document = query.get();
 
 			if (document.exists()) {
+
+				commitData.put(SUMMONER_ICON, summonerIcon);
 
 				if (document.contains(PENTAKILL_COUNT)) {
 
@@ -538,7 +550,7 @@ public class helperObject {
 					commitData.put(POTION_COUNT, potions);
 				}
 
-				ApiFuture<WriteResult> result = docRef.update(commitData);
+				docRef.update(commitData);
 
 			}
 
@@ -590,6 +602,224 @@ public class helperObject {
 			e.printStackTrace();
 		}
 
+	}
+
+	public void processWeekly(Firestore db) {
+
+		ApiFuture<QuerySnapshot> query = db.collection(mainFunction.SUMMONER_LIST_DB_NAME).get();
+
+		CopyOnWriteArrayList<Map<String, Object>> playerData = new CopyOnWriteArrayList<Map<String, Object>>();
+
+		try {
+			QuerySnapshot querySnapshot = query.get();
+
+			List<QueryDocumentSnapshot> documents = querySnapshot.getDocuments();
+
+			documents.parallelStream().forEach(new Consumer<QueryDocumentSnapshot>() {
+				public void accept(QueryDocumentSnapshot c) {
+
+					Map<String, Object> playerDataCollective = c.getData();
+					playerDataCollective.put(SUMMONER_NAME, c.getId());
+
+					playerData.add(playerDataCollective);
+
+				}
+			});
+
+			DiscordWebhook discordData = new DiscordWebhook(mainFunction.DISCORD_WEBHOOK_URL);
+			DiscordWebhook.EmbedObject embedded = new DiscordWebhook.EmbedObject();
+
+			DateTimeFormatter format = DateTimeFormatter.ofPattern("MM-dd-yyyy");
+
+			LocalDateTime now = LocalDateTime.now();
+			LocalDateTime then = now.minusDays(7);
+
+			embedded.setDescription(then.format(format) + "  =>  " + now.format(format));
+			embedded.setTitle("Weekly Awards: ");
+			embedded.setFooter("[Eridani Digital Technology]", "https://eridanidigitaltech.com/images/icon.png");
+			embedded.setImage(
+					"https://static.tweaktown.com/news/5/4/54718_01_plays-host-league-legends-championship-finals_full.png");
+
+			List<playerWeeklyValue> mostPentaKillRecords = new playerDataParser().playerDataEvaluate(playerData,
+					PENTAKILL_COUNT);
+
+			if (mostPentaKillRecords.size() > 0) {
+				mostPentaKillRecords.forEach(e -> {
+
+					embedded.addField("Most PentaKills", e.playerName + "(" + e.foundValue + ")", true);
+
+				});
+
+			}
+
+			List<playerWeeklyValue> mostQuadraKillRecords = new playerDataParser().playerDataEvaluate(playerData,
+					QUADRAKILL_COUNT);
+
+			if (mostQuadraKillRecords.size() > 0) {
+				mostQuadraKillRecords.forEach(e -> {
+
+					embedded.addField("Most QuadraKills", e.playerName + "(" + e.foundValue + ")", true);
+
+				});
+
+			}
+
+			List<playerWeeklyValue> maxCSRecords = new playerDataParser().playerDataEvaluate(playerData, MAX_CS);
+
+			if (maxCSRecords.size() > 0) {
+				maxCSRecords.forEach(e -> {
+
+					embedded.addField("Most CS per game", e.playerName + "(" + e.foundValue + ")", true);
+
+				});
+
+			}
+
+			List<playerWeeklyValue> mostKillsRecords = new playerDataParser().playerDataEvaluate(playerData,
+					KILL_COUNT);
+
+			if (mostKillsRecords.size() > 0) {
+				mostKillsRecords.forEach(e -> {
+
+					embedded.addField("Most Kills", e.playerName + "(" + e.foundValue + ")", true);
+
+				});
+
+			}
+
+			List<playerWeeklyValue> mostInhibKillsRecords = new playerDataParser().playerDataEvaluate(playerData,
+					INHIB_KILL_COUNT);
+
+			if (mostInhibKillsRecords.size() > 0) {
+				mostInhibKillsRecords.forEach(e -> {
+
+					embedded.addField("Most Inhib Kills", e.playerName + "(" + e.foundValue + ")", true);
+
+				});
+
+			}
+
+			List<playerWeeklyValue> mostTurrentKillsRecords = new playerDataParser().playerDataEvaluate(playerData,
+					TURRENT_KILL_COUNT);
+
+			if (mostTurrentKillsRecords.size() > 0) {
+				mostTurrentKillsRecords.forEach(e -> {
+
+					embedded.addField("Most Turrent Kills", e.playerName + "(" + e.foundValue + ")", true);
+
+				});
+
+			}
+
+			List<playerWeeklyValue> mostBaronKillsRecords = new playerDataParser().playerDataEvaluate(playerData,
+					BARON_KILL_COUNT);
+
+			if (mostBaronKillsRecords.size() > 0) {
+				mostBaronKillsRecords.forEach(e -> {
+
+					embedded.addField("Most Baron Kills", e.playerName + "(" + e.foundValue + ")", true);
+
+				});
+
+			}
+
+			List<playerWeeklyValue> mostDragonKillsRecords = new playerDataParser().playerDataEvaluate(playerData,
+					DRAGON_KILL_COUNT);
+
+			if (mostDragonKillsRecords.size() > 0) {
+				mostDragonKillsRecords.forEach(e -> {
+
+					embedded.addField("Most Dragon Kills", e.playerName + "(" + e.foundValue + ")", true);
+
+				});
+
+			}
+
+			List<playerWeeklyValue> mostWardsRecords = new playerDataParser().playerDataEvaluate(playerData,
+					WARD_COUNT);
+
+			if (mostWardsRecords.size() > 0) {
+				mostWardsRecords.forEach(e -> {
+
+					embedded.addField("Most Wards Placed", e.playerName + "(" + e.foundValue + ")", true);
+
+				});
+
+			}
+
+			List<playerWeeklyValue> mostPotionsRecords = new playerDataParser().playerDataEvaluate(playerData,
+					POTION_COUNT);
+
+			if (mostPotionsRecords.size() > 0) {
+				mostPotionsRecords.forEach(e -> {
+
+					embedded.addField("Most Potions Used", e.playerName + "(" + e.foundValue + ")", true);
+
+				});
+
+			}
+
+			discordData.addEmbed(embedded);
+			discordData.execute();
+
+		} catch (InterruptedException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} catch (ExecutionException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} catch (ClientProtocolException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+
+	}
+
+	class playerDataParser {
+
+		public List<playerWeeklyValue> playerDataEvaluate(List<Map<String, Object>> playerData, final String value) {
+
+			CopyOnWriteArrayList<playerWeeklyValue> topPlayers = new CopyOnWriteArrayList<playerWeeklyValue>();
+
+			Comparator<Map<String, Object>> sortPlayerDataComparator = new Comparator<Map<String, Object>>() {
+
+				@Override
+				public int compare(Map<String, Object> o1, Map<String, Object> o2) {
+					// TODO Auto-generated method stub
+					int O1 = Integer.parseInt(o1.getOrDefault(value, 0).toString());
+					int O2 = Integer.parseInt(o2.getOrDefault(value, 0).toString());
+
+					return Integer.compare(O1, O2);
+
+				}
+
+			};
+
+			playerData.sort(sortPlayerDataComparator);
+
+			Map<String, Object> topPlayer = playerData.get(playerData.size() - 1);
+
+			playerData.parallelStream().forEach(e -> {
+
+				if ((Integer.parseInt(e.getOrDefault(value, 0).toString()) == Integer
+						.parseInt(topPlayer.getOrDefault(value, 0).toString()))
+						&& (Integer.parseInt(e.getOrDefault(value, 0).toString()) != 0)) {
+
+					topPlayers.add(new playerWeeklyValue(e.get(SUMMONER_NAME).toString(),
+							e.get(SUMMONER_ICON).toString(), (Integer.parseInt(e.get(value).toString()))
+
+					));
+
+				}
+
+			});
+
+			return topPlayers;
+
+		}
 	}
 
 }
